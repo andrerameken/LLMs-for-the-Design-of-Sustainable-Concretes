@@ -10,6 +10,8 @@ from openai import RateLimitError
 import random
 import re
 import time
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
 
 def read_and_evaluate(folder_name, model_name):
     metrics = {"R-squared" : [], "MSE": [], "MAE": []}
@@ -116,7 +118,7 @@ def plot_actual_vs_predicted(model_name):
 
 
 
-def generate_prediction(client, train, test, model_name):
+def generate_prediction(client, train, test, model_name, model = None, tokenizer = None):
         # Loop in case of RateLimitError
         for i in range(5):
             response = ""
@@ -130,8 +132,12 @@ def generate_prediction(client, train, test, model_name):
                     train_messages = train
                     test_message = [{"role":"user", "content": test}]
                     messages = train_messages + test_message
-                    response = generate_chat_completion(client, model_name, messages)
-                    result_text = response.choices[0].message.content
+                    
+                    if model_name == "gpt-4o-mini":
+                        response = generate_chat_completion(client, model_name, messages)
+                        result_text = response.choices[0].message.content
+                    else:
+                        result_text = generate_llama_output(model, tokenizer, messages)
                 
                 print(f"response: {result_text}")
                 result_text = re.sub("[^0-9.]", "", result_text)
@@ -164,6 +170,26 @@ def generate_chat_completion(client, model_name, messages):
                 temperature=0,
             )
     return response
+
+def generate_llama_output(model, tokenizer, messages):
+    
+    inputs = tokenizer.apply_chat_template(
+        messages, add_generation_prompt = True, return_tensors="pt", return_dict = True
+    ).to(model.device)
+
+    outputs = model.generate(**inputs, 
+                             max_new_tokens = 10,
+                             temperature = 0,
+                             num_return_sequences = 1,
+                             do_sample = False
+    )
+    
+    prompt_length = inputs["input_ids"].shape[-1]
+    response_ids = outputs[0][prompt_length:]
+    response = tokenizer.decode(response_ids, skip_special_tokens=True)
+
+    return response
+
 
 def save_results_to_csv(model_name, approach, result_list):
     
@@ -212,11 +238,13 @@ def create_training_messages(training_prompts, system_message):
     return training_messages
 
 
-def predict_and_evaluate(client, train_prompts, test_prompts, true_values, model_name):
+def predict_and_evaluate(client, train_prompts, test_prompts, true_values, model_name, model = None, tokenizer = None):
         predictions = [generate_prediction(client, 
                                        train_prompts, 
                                        test_prompt, 
-                                       model_name) for test_prompt in test_prompts]
+                                       model_name,
+                                       model,
+                                       tokenizer) for test_prompt in test_prompts]
         r2 = r2_score(true_values, predictions)
         mae = mean_absolute_error(true_values, predictions)
         mse = mean_squared_error(true_values, predictions)
@@ -238,7 +266,7 @@ def append_to_result_list(test_prompts, true_values, predictions, result_list):
         result_list.append(result_dict)
 
 
-def gather_LLM_results(data, train_size, test_size, client, model_name, indices, system_message = None, context_prompt = None):
+def gather_LLM_results(data, train_size, test_size, client, model_name, indices, system_message = None, context_prompt = None, model=None, tokenizer = None):
     train_data, test_data = sample_train_and_test_data(data,
                                                        train_size,
                                                        test_size,
@@ -256,9 +284,11 @@ def gather_LLM_results(data, train_size, test_size, client, model_name, indices,
         train_input = create_training_messages(training_prompts, system_message)
     
     predictions = predict_and_evaluate(client, 
-                                           train_input, 
-                                           test_prompts,
-                                           true_values,
-                                           model_name)
+                                       train_input, 
+                                       test_prompts,
+                                       true_values,
+                                       model_name,
+                                       model,
+                                       tokenizer)
     
     return test_prompts, true_values, predictions
