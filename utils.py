@@ -197,8 +197,8 @@ def save_results_to_csv(model_name, approach, result_list):
     result_path= os.path.join('results', model_name, approach)
 
     # Create needed directories if they do not already exist
-    dir_name = os.path.dirname(result_path)
-    os.makedirs(dir_name, exist_ok=True)
+    #dir_name = os.path.dirname(result_path)
+    os.makedirs(result_path, exist_ok=True)
 
     # Concatenate all the results to a single DataFrame
     result_df = pd.concat([pd.DataFrame(result_dict) for result_dict in result_list], ignore_index=True)
