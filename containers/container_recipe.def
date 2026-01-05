@@ -16,6 +16,7 @@ from: /apps/containers/RockyLinux/RockyLinux-10.sif
     pip3 install transformers
     pip3 install trl
     pip3 install accelerate
+    pip3 install bitsandbytes
     pip3 install peft
     pip3 install kernels
     pip3 install jupyter
